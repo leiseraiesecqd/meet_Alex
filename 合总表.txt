@@ -1,0 +1,223 @@
+def cal_now():
+   
+    import copy  
+    
+    T=pd.read_csv(mid_path+'table_6_file_label_new.csv')
+    T1=pd.read_csv(mid_path+'table_6_file_label_new.csv')
+    cal_col=list(T.columns[T.columns.str.contains('_income')|T.columns.str.contains('_cash')])
+    cal_col.remove('N_CE_BEG_BAL_commom_cash')
+    print('要处理的列：',len(cal_col))
+    print('=======================================')
+    print('start calculate the now_values:\n')
+    old_name=[]
+    new_name=[]
+    for item in cal_col:
+        '''
+        建立映射关系，month_pre:3-6,6-9,9-12,12-15，merge到原表中。将merge后month=3的填充零。再去掉Nan值。
+        '''   
+        print(item)
+        table=copy.deepcopy(T1) 
+        
+        
+        ##第一次：去掉空值
+        table.dropna(subset=[item],how='any',inplace=True)
+        
+        table['month_pre']=table['month']+3
+        table['month_pre'].value_counts()
+        pre_Revenue=table[['TICKER_SYMBOL','year','month_pre',item]]
+        pre_Revenue.rename(columns={item:item+'_pre','month_pre':'month'},inplace=True)
+        table.drop(['month_pre'],axis=1,inplace=True)
+
+        table=pd.merge(table,pre_Revenue,how='left',on=['TICKER_SYMBOL','year','month'])
+
+        table.loc[table[table.month==3].index,item+'_pre']=0
+
+        ##第二次：去掉空值
+        table.dropna(subset=[item+'_pre'],how='any',inplace=True)
+        
+        #建立计算当季值，删除原累计值和上期累计值
+        table[item+'_now']=table[item]-table[item+'_pre']
+
+        T=pd.merge(T,table[['TICKER_SYMBOL','year','month',item+'_now']],how='left',on=['TICKER_SYMBOL','year','month'])
+        old_name.append(item)
+        new_name.append(item+'_now')
+    
+        T.drop([item],axis=1,inplace=True)
+        
+        del table
+        print('%s计算完成,维度是'%(item),T.shape)
+    
+    DataFrame({'cols_name':old_name,'cols_name_new':new_name}).to_csv(other_path+'dic.csv',index=False)
+    print('drop origin 3 outer data...')  
+    drop_col=T.columns[187:290]
+    T.drop(drop_col,axis=1,inplace=True)
+        
+    return T
+
+def get_macro():
+    
+    '''
+    读取并处理宏观数据
+    
+    '''
+    qq=pd.read_excel(other_path+'Macro_29.xlsx')
+    qq.columns[qq.columns.str.contains('亿元')]
+    for item in list(qq.columns[qq.columns.str.contains('亿元')]):
+        print(item)
+        qq['%s'%item]=qq['%s'%item]*10**8
+    qq
+
+    col_name=['macro_%d'%i for i in range(len(qq.columns))]
+    col_name
+
+    dict_macro=dict(zip(qq.columns,col_name))
+    dict_macro
+
+    qq.rename(columns=dict_macro,inplace=True)
+    qq
+    return qq
+
+#DataFrame({'1':col_name,'2':qq.columns}).to_csv(file_path+'abcd.csv',index=False,encoding='gbk')
+
+
+
+def pre_revenue():
+    '''
+    计算上一期营收
+    '''
+    A=pd.read_csv(mid_path+'table_6_file_label.csv')
+    A[A.TICKER_SYMBOL==1].END_DATE.values
+
+    tt=['2009-03-31', '2009-06-30', '2009-09-30', '2009-12-31',
+           '2010-03-31', '2010-06-30', '2010-09-30', '2010-12-31',
+           '2011-03-31', '2011-06-30', '2011-09-30', '2011-12-31',
+           '2012-03-31', '2012-06-30', '2012-09-30', '2012-12-31',
+           '2013-03-31', '2013-06-30', '2013-09-30', '2013-12-31',
+           '2014-03-31', '2014-06-30', '2014-09-30', '2014-12-31',
+           '2015-03-31', '2015-06-30', '2015-09-30', '2015-12-31',
+           '2016-03-31', '2016-06-30', '2016-09-30', '2016-12-31',
+           '2017-03-31', '2017-06-30', '2017-09-30', '2017-12-31',
+           '2018-03-31']
+
+    w=[]
+    ww=[]
+    for i in range(len(tt)-1):
+        w.append(tt[i])
+        ww.append(tt[i+1])
+    W=DataFrame({'END_DATE':w,'END_DATE_PRE':ww})
+    W
+    AW=pd.merge(A,W,how='left',on=['END_DATE'])
+    AW[['TICKER_SYMBOL','END_DATE','END_DATE_PRE','label']]
+
+    AW=AW[['TICKER_SYMBOL','END_DATE_PRE','label']]
+    AW.rename(columns={'END_DATE_PRE':'END_DATE'},inplace=True)
+    AW
+
+
+    B=pd.read_csv(mid_path+'table_6_file.csv')
+    ABW=pd.merge(B,AW,how='left',on=['TICKER_SYMBOL','END_DATE'])
+    ABW
+
+    ABW_child=ABW[ABW['END_DATE']=='2018-03-31']
+    #ABW.replace(0,np.nan,inplace=True)
+    ABW.dropna(subset=['label'],how='any',inplace=True)
+    ABW_PLUS=pd.concat([ABW,ABW_child])
+    ABW_PLUS=ABW_PLUS[['TICKER_SYMBOL','END_DATE','label']]
+    ABW_PLUS['year']=ABW_PLUS['END_DATE'].apply(lambda x:x[0:4]).astype(int)
+    ABW_PLUS['month']=ABW_PLUS['END_DATE'].apply(lambda x:x[5:7]).astype(int)
+    ABW_PLUS.drop(['END_DATE'],axis=1,inplace=True)
+    
+    return ABW_PLUS
+
+
+
+#------------------------------------------------------------------
+table=pd.read_csv(mid_path+'cal_now_values.csv')
+table
+
+##-----计算利润表和流量表中当季值-----------
+#table=cal_now()
+
+#----添加上一季度值--------------------
+print('===========================================')
+print('添加上一季度值')
+pre_revenue=pre_revenue()
+pre_revenue.drop_duplicates(inplace=True)
+pre_revenue.rename(columns={'label':'REVENUE_pre'},inplace=True)
+pre_revenue
+
+table=pd.merge(table,pre_revenue,how='left',on=['TICKER_SYMBOL','year','month'])
+table.rename(columns={'REVENUE_commom_income_now':'REVENUE_now'},inplace=True)
+
+
+#-----添加weight列---------------
+print('===========================================')
+print('添加weight列')
+weight=pd.read_csv(other_path+'weight.csv')
+weight
+table=pd.merge(table,weight,how='left',on=['TICKER_SYMBOL'])
+table
+
+#-----------合宏观数据-------------------
+print('===========================================')
+print('合宏观数据')
+macro=get_macro()
+macro.macro_0=macro.macro_0.apply(lambda x:datetime.datetime.strftime(x,'%Y-%m-%d'))
+macro.rename(columns={'macro_0':'END_DATE'},inplace=True)
+macro
+
+table=pd.merge(table,macro,how='left',on=['END_DATE'])
+
+
+##合财务因子数据------------------------------------
+print('===========================================')
+print('合财务因子数据')
+other=pd.read_csv(mid_path+'TotalDataV8.csv',)
+other#87416 rows × 102 columns
+other['year']=other.END_DATE.apply(lambda x:x[0:4]).astype(int)
+other['month']=other.END_DATE.apply(lambda x:x[5:7]).astype(int)
+other.drop(['END_DATE'],axis=1,inplace=True)
+other#87416 rows × 103 columns
+other
+
+
+final=pd.merge(table,other,how='left',on=['TICKER_SYMBOL', 'industryID_level_1', 'industryID_level_2',\
+           'industryID_level_3', 'industrySymbol_level_1',\
+           'industrySymbol_level_2', 'industrySymbol_level_3',\
+           'indexSymbol_level_1', 'indexSymbol_level_2', 'indexSymbol_level_3',\
+            'year', 'month'])
+
+
+##添加revenue列
+print('===========================================')
+print('添加loss计算营收累计值列')
+revenue=pd.read_csv(mid_path+'table_6_file.csv')
+
+final=pd.merge(final,revenue[['TICKER_SYMBOL','END_DATE','REVENUE_commom_income']],how='left',on=['TICKER_SYMBOL','END_DATE'])
+final.loc[final[final.month==12].index,'REVENUE_commom_income']=0
+
+
+final=final[final.label!=0]
+print('总表初步合成，大小是',final.shape)
+
+
+A=preprocess.middle_operation(final,oht_col)
+B=preprocess.select_table(A,class_option,del_col,ticker_option,drop_ticker)
+
+print('总表处理完毕，大小是',B.shape)
+
+
+##拆分训练集验证集
+print('===========================================')
+print('拆分训练集和验证集')
+
+train=B[B.era!='201806']
+#train.to_csv(file_path+'train_701_V2.csv',index=False)
+print('train_set:',train.shape)
+test_list=pd.read_csv(file_path+'ticker.csv')
+test_list=test_list['TICKER_SYMBOL'].values
+test_list
+test=B[B.era=='201806'].drop(['era','label','weight'],axis=1)
+test=test[test.TICKER_SYMBOL.isin(test_list)]
+print('test_set:',test.shape)
+#test.to_csv(file_path+'test_701_V2.csv',index=False)
